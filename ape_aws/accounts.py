@@ -91,18 +91,24 @@ class KmsAccount(AccountAPI):
         Returns:
             TransactionAPI | None
         """
-        unsigned_txn = serializable_unsigned_transaction_from_dict(txn.model_dump()).hash()
+        dump = txn.model_dump()
+        dump.pop("from", None)
+        unsigned_txn = serializable_unsigned_transaction_from_dict(dump).hash()
         if not (msg_sig := self._sign_raw_hash(unsigned_txn)):
             return None
         txn.signature = TransactionSignature(
-            **_convert_der_to_rsv(msg_sig, (2 * txn.chain_id + 35) if txn.chain_id else 27)
+            **_convert_der_to_rsv(msg_sig, 0)
         )
-        # TODO: Figure out how to properly compute v
-        if not self.check_signature(txn):
+        try:
+            if not self.check_signature(txn):
+                raise ValueError("Invalid signature with v=0")
+        except Exception:
             txn.signature = TransactionSignature(
-                v=txn.signature.v + 1,
-                r=txn.signature.r,
-                s=txn.signature.s,
-            )
+                    v=txn.signature.v + 1,
+                    r=txn.signature.r,
+                    s=txn.signature.s,
+                )
+            if not self.check_signature(txn):
+                raise ValueError("Invalid signature with v=1")
 
         return txn
